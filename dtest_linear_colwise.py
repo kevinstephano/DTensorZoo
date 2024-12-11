@@ -5,21 +5,19 @@ from torch.distributed.tensor import Shard, Replicate, distribute_tensor, distri
 
 """
 To run the example, use the following command:
-TORCH_COMPILE_DEBUG=1 torchrun --standalone --nnodes=1 --nproc-per-node=8 dtest_xformer_mlp.py
+torchrun --standalone --nnodes=1 --nproc-per-node=8 dtest_xformer_mlp.py
 """
 
 class MyModule(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.fc2 = nn.Linear(4096, 4096, bias=False)
         self.fc1 = nn.Linear(4096, 4096, bias=False)
         self.relu = nn.ReLU()
 
     def forward(self, input):
         out1 = self.fc1(input)
         out2 = self.relu(out1)
-        out3 = self.fc2(out2)
-        return out3
+        return out2
 
 mesh = init_device_mesh("cuda", (8,))
 rank = dist.get_rank()
@@ -36,10 +34,17 @@ def shard_params(mod_name, mod, mesh):
 
 model = distribute_module(MyModule(), mesh, partition_fn=shard_params)
 
+
+# Trace the module
+#print(sharded_module)
+#trace = torch.fx.symbolic_trace(sharded_module)
+#print(trace.graph)
+
 inputs = torch.randn(16, 512, 4096, device='cuda')
 dinputs = distribute_tensor(inputs, mesh, [Replicate()])
 
 model = torch.compile(model)
+
 out = model(dinputs)
 
 # Check memory consumption
